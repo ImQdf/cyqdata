@@ -303,12 +303,19 @@ namespace CYQ.Data
         {
             get
             {
-                return HttpContext.Current.Request.Url;
+                if (HttpContext.Current != null)
+                {
+                    return HttpContext.Current.Request.Url;
+                }
+                return null;
             }
         }
         //读配置文件时会修改此值。
         private static bool _IsAspNetCore = false;
-        internal static bool IsAspNetCore
+        /// <summary>
+        /// 当前是否ASP.NET Core环境。
+        /// </summary>
+        public static bool IsAspNetCore
         {
             get
             {
@@ -386,8 +393,8 @@ namespace CYQ.Data
                 {
                     if (string.IsNullOrEmpty(_Domain))
                     {
-                        Uri uri=AppConfig.WebUri;
-                        string domainList=GetApp("Domain", "");
+                        Uri uri = AppConfig.WebUri;
+                        string domainList = GetApp("Domain", "");
                         if (!string.IsNullOrEmpty(domainList))
                         {
                             string[] domains = domainList.Split(',');
@@ -397,7 +404,7 @@ namespace CYQ.Data
                                 {
                                     _Domain = domains[0];
                                 }
-                                else if (AppConfig.IsWeb)
+                                else if (uri != null)
                                 {
                                     foreach (string domain in domains)
                                     {
@@ -409,9 +416,9 @@ namespace CYQ.Data
                                 }
                             }
                         }
-                        else if (AppConfig.IsWeb && uri.Host!="localhost")
+                        else if (uri != null && uri.Host != "localhost")
                         {
-                            _Domain = uri.Authority.Replace("www.", string.Empty);
+                            _Domain = uri.Host.Replace("www.", string.Empty);
                         }
                     }
                     return _Domain;
