@@ -505,7 +505,14 @@ namespace CYQ.Data.Table
                         {
                             sbc.ColumnMappings.Add(column.ColumnName, column.ColumnName);
                         }
-                        sbc.WriteToServer(mdt);
+                        if (AppConfig.IsAspNetCore)
+                        {
+                            sbc.WriteToServer(mdt.ToDataTable());
+                        }
+                        else
+                        {
+                            sbc.WriteToServer(mdt);
+                        }
                     }
                 }
                 return true;
@@ -533,7 +540,7 @@ namespace CYQ.Data.Table
         internal bool OracleBulkCopyInsert()
         {
             CheckGUIDAndDateTime(DalType.Oracle);
-            string conn = DalCreate.FormatConn(DalType.Oracle, AppConfig.GetConn(_Conn));
+            string conn = ConnBean.Create(_Conn).ConnString;
             Assembly ass = OracleDal.GetAssembly();
             object sbc = ass.CreateInstance("Oracle.DataAccess.Client.OracleBulkCopy", false, BindingFlags.CreateInstance, null, new object[] { conn }, null, null);
             Type sbcType = sbc.GetType();

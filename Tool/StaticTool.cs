@@ -70,6 +70,7 @@ namespace CYQ.Data.Tool
         /// 将PropertyInfo[] 改成PropertyInfo List，是因为.NET的CLR会引发内存读写异常（启用IntelliTrace时）
         /// </summary>
         static MDictionary<string, List<PropertyInfo>> propCache = new MDictionary<string, List<PropertyInfo>>();
+        static MDictionary<string, List<FieldInfo>> fieldCache = new MDictionary<string, List<FieldInfo>>();
         /// <summary>
         /// 获取属性列表
         /// </summary>
@@ -100,7 +101,34 @@ namespace CYQ.Data.Tool
                 return list;
             }
         }
+        /// <summary>
+        /// 获取Field列表
+        /// </summary>
+        public static List<FieldInfo> GetFieldInfo(Type t)
+        {
+            string key = t.GUID.ToString();
+            if (fieldCache.ContainsKey(key))
+            {
+                return fieldCache[key];
+            }
+            else
+            {
+                bool isInheritOrm = t.BaseType.Name == "OrmBase" || t.BaseType.Name == "SimpleOrmBase";
+                FieldInfo[] pInfo = isInheritOrm ? t.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly) : t.GetFields();
+                List<FieldInfo> list = new List<FieldInfo>(pInfo.Length);
+                try
+                {
 
+                    list.AddRange(pInfo);
+                    fieldCache.Set(key, list);
+                }
+                catch (Exception err)
+                {
+                    Log.WriteLogToTxt(err);
+                }
+                return list;
+            }
+        }
         static Dictionary<string, Type[]> argumentCache = new Dictionary<string, Type[]>();
         /// <summary>
         ///  获取泛型的参数长度（非泛型按默认方法计算）
@@ -111,7 +139,7 @@ namespace CYQ.Data.Tool
             return GetArgumentLength(ref t, out argTypes);
         }
         /// <summary>
-        /// 获取泛型的参数长度（非泛型按默认方法计算）
+        /// 获取泛型的参数长度，同时类型修改为普通类型（非泛型按默认方法计算）
         /// </summary>
         public static int GetArgumentLength(ref Type t, out Type[] argTypes)
         {
@@ -183,6 +211,10 @@ namespace CYQ.Data.Tool
             if (t.IsEnum)
             {
                 return SysType.Enum;
+            }
+            if (t.FullName.EndsWith("[]"))
+            {
+                return SysType.Array;
             }
             if (t.FullName.StartsWith("System.")) // 系统类型
             {
@@ -291,6 +323,10 @@ namespace CYQ.Data.Tool
             {
                 return null;
             }
+            if (t.FullName == "System.Type")
+            {
+                return (Type)value;
+            }
             string strValue = Convert.ToString(value);
             if (t.IsGenericType && t.Name.StartsWith("Nullable"))
             {
@@ -314,6 +350,10 @@ namespace CYQ.Data.Tool
             }
             else if (t.IsValueType)
             {
+                if (t.Name == "DateTime")
+                {
+                    return Convert.ChangeType(value, t);//这里用value，避免丢失毫秒
+                }
                 if (t.Name == "Guid")
                 {
                     return new Guid(strValue);

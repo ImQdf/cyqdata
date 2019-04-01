@@ -4,6 +4,7 @@ using System.Text;
 using System.Data.OleDb;
 using System.Data;
 using System.IO;
+using System.Data.Common;
 namespace CYQ.Data
 {
     internal class OleDbDal : DbBase
@@ -13,14 +14,6 @@ namespace CYQ.Data
         {
 
         }
-        public override void AddReturnPara()
-        {
-
-        }
-        //public override System.Data.Common.DbParameter GetNewParameter()
-        //{
-        //    return new OleDbParameter();
-        //}
         public override bool AddParameters(string parameterName, object value, DbType dbType, int size, ParameterDirection direction)
         {
             parameterName = parameterName.Substring(0, 1) == "@" ? parameterName : "@" + parameterName;
@@ -64,6 +57,10 @@ namespace CYQ.Data
             }
             Com.Parameters.Add(para);
             return true;
+        }
+        protected override DbProviderFactory GetFactory()
+        {
+            return DbProviderFactories.GetFactory("System.Data.OleDb");
         }
         protected override bool IsExistsDbName(string dbName)
         {

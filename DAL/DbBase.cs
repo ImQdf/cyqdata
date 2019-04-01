@@ -27,7 +27,6 @@ namespace CYQ.Data
         /// 是否允许进入写日志中模块
         /// </summary>
         internal bool isAllowInterWriteLog = true;
-        //        internal bool isErrorOnExeCommand;
         internal int recordsAffected = 0;//执行命令时所受影响的行数（-2为发生异常）。
         internal bool isWriteLog = false;//默认不启用，由AppSetting中配置控制，出现是为不用配置文件，内部手动控制启用。
         internal bool isUseUnsafeModeOnSqlite = false;
@@ -38,7 +37,6 @@ namespace CYQ.Data
         internal string tempSql = string.Empty;//附加信息，包括调试信息
 
         internal string conn = string.Empty;//原生态传进来的链接
-        internal string providerName = string.Empty;//传进来的名称
         /// <summary>
         /// 数据库链接实体（创建的时候被赋值）;
         /// </summary>
@@ -184,14 +182,13 @@ namespace CYQ.Data
         {
             this.connObject = co;
             this.useConnBean = co.Master;
-            this.conn = co.Master.Conn;
-            this.providerName = co.Master.ProviderName;
+            this.conn = co.Master.ConnString;
             dalType = co.Master.ConnDalType;
-            _fac = GetFactory(providerName);
+            _fac = GetFactory();
             _con = _fac.CreateConnection();
             try
             {
-                _con.ConnectionString = DalCreate.FormatConn(dalType, conn);
+                _con.ConnectionString = conn;
             }
             catch (Exception err)
             {
@@ -224,10 +221,7 @@ namespace CYQ.Data
             //}
             //_com.CommandTimeout = 1;
         }
-        protected virtual DbProviderFactory GetFactory(string providerName)
-        {
-            return DbProviderFactories.GetFactory(providerName);
-        }
+        protected abstract DbProviderFactory GetFactory();
         #region 数据库链接切换相关逻辑
         /// <summary>
         /// 切换数据库（修改数据库链接）
@@ -243,10 +237,10 @@ namespace CYQ.Data
                     if (IsExistsDbNameWithCache(dbName))//新的数据库不存在。。不允许切换
                     {
                         conn = GetNewConn(dbName);
-                        _con.ConnectionString = DalCreate.FormatConn(dalType, conn);
-                        connObject = DalCreate.GetConnObject(dbName + "Conn");
-                        connObject.Master.ConfigName = dbName + "Conn";
-                        connObject.Master.Conn = conn;
+                        _con.ConnectionString = ConnBean.RemoveConnProvider(dalType, conn);
+                        connObject = ConnObject.Create(dbName + "Conn");
+                        connObject.Master.ConnName = dbName + "Conn";
+                        connObject.Master.ConnString = conn;
                         return DbResetResult.Yes;
                     }
                     else
@@ -502,11 +496,11 @@ namespace CYQ.Data
             {
                 ResetConn(connObject.Master);
             }
-            if (OpenCon())//这里也会切库了。
+            if (OpenCon())//这里也会切库了，同时设置了10秒切到主库。
             {
                 try
                 {
-                    if (useConnBean.Conn != connObject.Master.Conn)
+                    if (useConnBean.ConnString != connObject.Master.ConnString)
                     {
                         // recordsAffected = -2;//从库不允许执行非查询操作。
                         string msg = "You can't do ExeNonQuerySQL() on Slave DataBase!";
@@ -566,19 +560,25 @@ namespace CYQ.Data
             ConnBean coSlave = null;
             //mssql 有 insert into ...select 操作。
             bool isSelectSql = !isOpenTrans && !cmdText.ToLower().TrimStart().StartsWith("insert ");//&& _IsAllowRecordSql
+            bool isOpenOK;
             if (isSelectSql)
             {
                 coSlave = connObject.GetSlave();
+                isOpenOK = OpenCon(coSlave, AllowConnLevel.MaterBackupSlave);
             }
-            else if (useConnBean.IsSlave) // 如果是在从库，切回主库。(insert ...select 操作)
+            else
             {
-                ResetConn(connObject.Master);
+                if (useConnBean.IsSlave) // 如果是在从库，切回主库。(insert ...select 操作)
+                {
+                    ResetConn(connObject.Master);
+                }
+                isOpenOK = OpenCon();
             }
-            if (OpenCon(coSlave, AllowConnLevel.MaterBackupSlave))
+            if (isOpenOK)
             {
                 try
                 {
-                    if (!isSelectSql && useConnBean.Conn != connObject.Master.Conn)
+                    if (!isSelectSql && useConnBean.ConnString != connObject.Master.ConnString)
                     {
                         recordsAffected = -2;//从库不允许执行非查询操作。
                         string msg = "You can't do ExeScalarSQL(with transaction or insert) on Slave DataBase!";
@@ -773,7 +773,10 @@ namespace CYQ.Data
                 _com.Parameters.Clear();
             }
         }
-        public abstract void AddReturnPara();
+        /// <summary>
+        /// 处理内置的MSSQL和Oracle两种存储过程分页
+        /// </summary>
+        protected virtual void AddReturnPara() { }
 
         private void SetCommandText(string commandText, bool isProc)
         {
@@ -964,11 +967,10 @@ namespace CYQ.Data
             ConnBean connBean = para as ConnBean;
             if (connBean != null && connBean.IsOK && openOKFlag == -1)
             {
-                string v = connBean.TryTestConn();//顺带设置版本号。
-                if (connBean.IsOK && openOKFlag != 1)
+                if (connBean.TryTestConn() && openOKFlag != 1)
                 {
                     openOKFlag = 1;
-                    _Version = v;
+                    _Version = connBean.Version;//设置版本号。
                     ResetConn(connBean);//切到正常的去。
                 }
                 else
@@ -985,17 +987,17 @@ namespace CYQ.Data
         /// <param name="cb"></param>
         private bool ResetConn(ConnBean cb)//, bool isAllowReset
         {
-            if (cb != null && cb.IsOK && _con != null && _con.State != ConnectionState.Open && conn != cb.Conn)
+            if (cb != null && cb.IsOK && _con != null && _con.State != ConnectionState.Open && conn != cb.ConnString)
             {
                 useConnBean = cb;
-                conn = cb.Conn;//切换。
-                _con.ConnectionString = DalCreate.FormatConn(dalType, conn);
+                conn = cb.ConnString;//切换。
+                _con.ConnectionString = conn;
                 return true;
             }
             return false;
         }
         /// <summary>
-        /// 打开链接只切主备
+        /// 打开链接，只切主备(同时有N秒的主库定位)
         /// </summary>
         /// <returns></returns>
         internal bool OpenCon()
@@ -1011,7 +1013,7 @@ namespace CYQ.Data
                 bool result = OpenCon(master, AllowConnLevel.MasterBackup);
                 if (result && _IsAllowRecordSql)
                 {
-                    connObject.SetNotAllowSlave();
+                    connObject.SetFocusOnMaster();
                     isAllowResetConn = false;
                 }
                 return result;

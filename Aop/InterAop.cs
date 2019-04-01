@@ -142,7 +142,7 @@ namespace CYQ.Data.Aop
                                         object instance = ass.CreateInstance(aopItem[0]);
                                         if (instance != null)
                                         {
-                                            _Cache.Set(key, instance, 1440, AppConst.RunFolderPath + aopItem[1].Replace(".dll", "") + ".dll");
+                                            _Cache.Set(key, instance, 1440, AppConst.AssemblyPath + aopItem[1].Replace(".dll", "") + ".dll");
                                             aop = instance as IAop;
                                             aop.OnLoad();
                                         }
@@ -152,7 +152,7 @@ namespace CYQ.Data.Aop
                             }
                             catch (Exception err)
                             {
-                                string errMsg = err.Message + "--Web.config need add a config item,for example:<add key=\"Aop\" value=\"Web.Aop.AopAction,Aop\" />(value format:namespace.Classname,Assembly name) ";
+                                string errMsg = err.Message + "--Web.config need add a config item,for example:<add key=\"Aop\" value=\"Web.Aop.AopAction,Aop\" />(value format : ClassFullName,AssemblyName) ";
                                 Error.Throw(errMsg);
                             }
                         }

@@ -388,7 +388,7 @@ namespace CYQ.Data
         {
             _Data = row;
             _TableName = SqlCompatible.Format(_sourceTableName, dalHelper.dalType);
-            _TableName = DBTool.GetMapTableName(dalHelper.useConnBean.ConfigName, _TableName);//处理数据库映射兼容。
+            _TableName = DBTool.GetMapTableName(dalHelper.useConnBean.ConnName, _TableName);//处理数据库映射兼容。
             if (_Data.Count == 0)
             {
                 if (!TableSchema.FillTableSchema(ref _Data, ref dalHelper, _TableName, _sourceTableName))
@@ -491,6 +491,7 @@ namespace CYQ.Data
                     {
                         case DalType.MsSql:
                         case DalType.Sybase:
+                        case DalType.PostgreSQL:
                             ID = dalHelper.ExeScalar(sqlCommandText, false);
                             if (ID == null && AllowInsertID && dalHelper.recordsAffected > -2)
                             {

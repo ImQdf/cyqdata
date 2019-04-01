@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Text;
 using System.Data.SqlClient;
 using System.Data;
+using System.Data.Common;
 
 namespace CYQ.Data
 {
@@ -11,7 +12,7 @@ namespace CYQ.Data
         public MsSqlDal(ConnObject co)
             : base(co)
         { }
-        public override void AddReturnPara()
+        protected override void AddReturnPara()
         {
             AddParameters("ReturnValue", null, DbType.Int32, 32, ParameterDirection.ReturnValue);
         }
@@ -51,6 +52,10 @@ namespace CYQ.Data
             }
         }
 
+        protected override DbProviderFactory GetFactory()
+        {
+            return DbProviderFactories.GetFactory("System.Data.SqlClient");
+        }
         protected override bool IsExistsDbName(string dbName)
         {
             try

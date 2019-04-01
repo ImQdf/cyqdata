@@ -68,59 +68,22 @@ namespace CYQ.Data.SQL
                 }
 
                 List<PropertyInfo> pis = StaticTool.GetPropertyInfo(typeInfo);
-
-                SqlDbType sqlType;
-                for (int i = 0; i < pis.Count; i++)
+                if (pis.Count > 0)
                 {
-                    sqlType = SQL.DataType.GetSqlType(pis[i].PropertyType);
-                    mdc.Add(pis[i].Name, sqlType);
-                    MCellStruct column = mdc[i];
-                    LengthAttribute la = GetAttr<LengthAttribute>(pis[i]);//获取长度设置
-                    if (la != null)
+                    for (int i = 0; i < pis.Count; i++)
                     {
-                        column.MaxSize = la.MaxSize;
-                        column.Scale = la.Scale;
+                        SetStruct(mdc, pis[i], null, i, pis.Count);
                     }
-                    if (column.MaxSize <= 0)
+                }
+                else
+                {
+                    List<FieldInfo> fis = StaticTool.GetFieldInfo(typeInfo);
+                    if (fis.Count > 0)
                     {
-                        column.MaxSize = DataType.GetMaxSize(sqlType);
-                    }
-                    KeyAttribute ka = GetAttr<KeyAttribute>(pis[i]);//获取关键字判断
-                    if (ka != null)
-                    {
-                        column.IsPrimaryKey = ka.IsPrimaryKey;
-                        column.IsAutoIncrement = ka.IsAutoIncrement;
-                        column.IsCanNull = ka.IsCanNull;
-                    }
-                    else if (i == 0)
-                    {
-                        column.IsPrimaryKey = true;
-                        column.IsCanNull = false;
-                        if (column.ColumnName.ToLower().Contains("id") && (column.SqlType == System.Data.SqlDbType.Int || column.SqlType == SqlDbType.BigInt))
+                        for (int i = 0; i < fis.Count; i++)
                         {
-                            column.IsAutoIncrement = true;
+                            SetStruct(mdc, null, fis[i], i, fis.Count);
                         }
-                    }
-                    DefaultValueAttribute dva = GetAttr<DefaultValueAttribute>(pis[i]);
-                    if (dva != null && dva.DefaultValue != null)
-                    {
-                        if (column.SqlType == SqlDbType.Bit)
-                        {
-                            column.DefaultValue = (dva.DefaultValue.ToString() == "True" || dva.DefaultValue.ToString() == "1") ? 1 : 0;
-                        }
-                        else
-                        {
-                            column.DefaultValue = dva.DefaultValue;
-                        }
-                    }
-                    else if (i > pis.Count - 3 && sqlType == SqlDbType.DateTime && pis[i].Name.EndsWith("Time"))
-                    {
-                        column.DefaultValue = SqlValue.GetDate;
-                    }
-                    DescriptionAttribute da = GetAttr<DescriptionAttribute>(pis[i]);//看是否有字段描述属性。
-                    if (da != null)
-                    {
-                        column.Description = da.Description;
                     }
                 }
                 object[] tableAttr = typeInfo.GetCustomAttributes(typeof(DescriptionAttribute), false);//看是否设置了表特性，获取表名和表描述
@@ -144,9 +107,66 @@ namespace CYQ.Data.SQL
             }
 
         }
-        private static T GetAttr<T>(PropertyInfo pi)
+        private static void SetStruct(MDataColumn mdc, PropertyInfo pi, FieldInfo fi, int i, int count)
         {
-            object[] attr = pi.GetCustomAttributes(typeof(T), false);//看是否设置了特性
+            Type type = pi != null ? pi.PropertyType : fi.FieldType;
+            string name = pi != null ? pi.Name : fi.Name;
+            SqlDbType sqlType = SQL.DataType.GetSqlType(type);
+            mdc.Add(name, sqlType);
+            MCellStruct column = mdc[i];
+            LengthAttribute la = GetAttr<LengthAttribute>(pi, fi);//获取长度设置
+            if (la != null)
+            {
+                column.MaxSize = la.MaxSize;
+                column.Scale = la.Scale;
+            }
+            if (column.MaxSize <= 0)
+            {
+                column.MaxSize = DataType.GetMaxSize(sqlType);
+            }
+            KeyAttribute ka = GetAttr<KeyAttribute>(pi, fi);//获取关键字判断
+            if (ka != null)
+            {
+                column.IsPrimaryKey = ka.IsPrimaryKey;
+                column.IsAutoIncrement = ka.IsAutoIncrement;
+                column.IsCanNull = ka.IsCanNull;
+            }
+            else if (i == 0)
+            {
+                column.IsPrimaryKey = true;
+                column.IsCanNull = false;
+                if (column.ColumnName.ToLower().Contains("id") && (column.SqlType == System.Data.SqlDbType.Int || column.SqlType == SqlDbType.BigInt))
+                {
+                    column.IsAutoIncrement = true;
+                }
+            }
+            DefaultValueAttribute dva = GetAttr<DefaultValueAttribute>(pi, fi);
+            if (dva != null && dva.DefaultValue != null)
+            {
+                if (column.SqlType == SqlDbType.Bit)
+                {
+                    column.DefaultValue = (dva.DefaultValue.ToString() == "True" || dva.DefaultValue.ToString() == "1") ? 1 : 0;
+                }
+                else
+                {
+                    column.DefaultValue = dva.DefaultValue;
+                }
+            }
+            else if (i > count - 3 && sqlType == SqlDbType.DateTime && name.EndsWith("Time"))
+            {
+                column.DefaultValue = SqlValue.GetDate;
+            }
+            DescriptionAttribute da = GetAttr<DescriptionAttribute>(pi, fi);//看是否有字段描述属性。
+            if (da != null)
+            {
+                column.Description = da.Description;
+            }
+        }
+        private static T GetAttr<T>(PropertyInfo pi, FieldInfo fi)
+        {
+            Type type = typeof(T);
+            object[] attr = pi != null ? pi.GetCustomAttributes(type, false) : fi.GetCustomAttributes(type, false);//看是否设置了特性
+
             if (attr != null && attr.Length == 1)
             {
                 return (T)attr[0];
@@ -260,10 +280,12 @@ namespace CYQ.Data.SQL
                         case DalType.Oracle:
                         case DalType.MySql:
                         case DalType.Sybase:
+                        case DalType.PostgreSQL:
                             #region Sql
                             string sql = string.Empty;
                             if (dalType == DalType.MsSql)
                             {
+                                #region Mssql
                                 string dbName = null;
                                 if (!helper.Version.StartsWith("08"))
                                 {
@@ -281,6 +303,7 @@ namespace CYQ.Data.SQL
                                 }
 
                                 sql = GetMSSQLColumns(helper.Version.StartsWith("08"), dbName ?? helper.DataBase);
+                                #endregion
                             }
                             else if (dalType == DalType.MySql)
                             {
@@ -302,6 +325,10 @@ namespace CYQ.Data.SQL
                             {
                                 tableName = SqlFormat.NotKeyword(tableName);
                                 sql = GetSybaseColumns();
+                            }
+                            else if (dalType == DalType.PostgreSQL)
+                            {
+                                sql = GetPostgreColumns();
                             }
                             helper.AddParameters("TableName", SqlFormat.NotKeyword(tableName), DbType.String, 150, ParameterDirection.Input);
                             DbDataReader sdr = helper.ExeDataReader(sql, false);
@@ -679,6 +706,9 @@ namespace CYQ.Data.SQL
                                 case DalType.MySql:
                                     sql = GetMySqlTables(helper.DataBase);
                                     break;
+                                case DalType.PostgreSQL:
+                                    sql = GetPostgreTables(helper.DataBase);
+                                    break;
                                 case DalType.Txt:
                                 case DalType.Xml:
                                     tables = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -954,16 +984,19 @@ namespace CYQ.Data.SQL
                     }
                     break;
                 case DalType.Oracle:
-                    exist = string.Format(ExistOracle, (type == "U" ? "TABLE" : "VIEW"), name);
+                    exist = string.Format(ExistOracle, name, (type == "U" ? "TABLE" : "VIEW"));
                     break;
                 case DalType.MsSql:
                     exist = string.Format(helper.Version.StartsWith("08") ? Exist2000 : Exist2005, name, type);
                     break;
                 case DalType.SQLite:
-                    exist = string.Format(ExistSqlite, (type == "U" ? "table" : "view"), SqlFormat.NotKeyword(name));
+                    exist = string.Format(ExistSqlite, SqlFormat.NotKeyword(name), (type == "U" ? "table" : "view"));
                     break;
                 case DalType.Sybase:
                     exist = string.Format(ExistSybase, SqlFormat.NotKeyword(name), type);
+                    break;
+                case DalType.PostgreSQL:
+                    exist = string.Format(ExistPostgre, SqlFormat.NotKeyword(name), (type == "U" ? "BASE TABLE" : "VIEW"));
                     break;
                 case DalType.Txt:
                 case DalType.Xml:
@@ -1012,10 +1045,11 @@ namespace CYQ.Data.SQL
     {
         internal const string Exist2000 = "SELECT count(*) FROM sysobjects where id = OBJECT_ID(N'{0}') AND xtype in (N'{1}')";
         internal const string Exist2005 = "SELECT count(*) FROM sys.objects where object_id = OBJECT_ID(N'{0}') AND type in (N'{1}')";
-        internal const string ExistOracle = "Select count(*)  From user_objects where object_type='{0}' and object_name=upper('{1}')";
+        internal const string ExistOracle = "Select count(*)  From user_objects where  object_name=upper('{0}') and object_type='{1}'";
         internal const string ExistMySql = "SELECT count(*)  FROM  `information_schema`.`COLUMNS`  where TABLE_NAME='{0}' and TABLE_SCHEMA='{1}'";
         internal const string ExistSybase = "SELECT count(*) FROM sysobjects where id = OBJECT_ID(N'{0}') AND type in (N'{1}')";
-        internal const string ExistSqlite = "SELECT count(*) FROM sqlite_master where type='{0}' and name='{1}'";
+        internal const string ExistSqlite = "SELECT count(*) FROM sqlite_master where name='{0}' and type='{1}'";
+        internal const string ExistPostgre = "SELECT count(*) FROM information_schema.tables where table_schema = 'public' and table_name='{0}' and table_type='{1}'";
         internal const string ExistOracleSequence = "SELECT count(*) FROM All_Sequences where Sequence_name='{0}'";
         internal const string CreateOracleSequence = "create sequence {0} start with {1} increment by 1";
         internal const string GetOracleMaxID = "select max({0}) from {1}";
@@ -1076,7 +1110,7 @@ namespace CYQ.Data.SQL
         }
         internal static string GetMySqlColumns(string dbName)
         {
-            return string.Format(@"SELECT DISTINCT s1.COLUMN_NAME as ColumnName,case DATA_TYPE when 'int' then 10 when 'date' then 10 when 'time' then 8  when 'datetime' then 23 when 'year' then 4
+            return string.Format(@"SELECT s1.COLUMN_NAME as ColumnName,case DATA_TYPE when 'int' then 10 when 'date' then 10 when 'time' then 8  when 'datetime' then 23 when 'year' then 4
                     else IFNULL(CHARACTER_MAXIMUM_LENGTH,NUMERIC_PRECISION) end as MaxSize,NUMERIC_SCALE as Scale,
                     case IS_NULLABLE when 'YES' then 1 else 0 end as IsNullable,
                     CASE extra when 'auto_increment' then 1 else 0 END AS IsAutoIncrement,
@@ -1109,7 +1143,32 @@ left join syscomments s3 on s1.cdefault=s3.id
 where s1.id =object_id(@TableName) and s2.usertype<100
 order by s1.colid";
         }
+        internal static string GetPostgreColumns()
+        {
+            return @"select
+a.attname AS ColumnName,
+i.data_type AS SqlType,
+coalesce(character_maximum_length,numeric_precision,-1) as MaxSize,numeric_scale as Scale,
+case a.attnotnull when 'true' then 0 else 1 end AS IsNullable,
+case  when position('nextval' in column_default)>0 then 1 else 0 end as IsAutoIncrement, 
+case when o.conname is null then 0 else 1 end as IsPrimaryKey,
+d.description AS Description,
+i.column_default as DefaultValue
+from pg_class c 
+left join pg_attribute a on c.oid=a.attrelid
+left join pg_description d on a.attrelid=d.objoid AND a.attnum = d.objsubid
+left join pg_type t on a.atttypid = t.oid
+left join information_schema.columns i on i.table_schema='public' and i.table_name=c.relname and i.column_name=a.attname
+left join pg_constraint o on a.attnum = o.conkey[1] and o.contype='p' and o.conrelid=c.oid
+where c.relname =:TableName
+and a.attnum > 0 and a.atttypid>0
+ORDER BY a.attnum";
+        }
 
+
+        #endregion
+
+        #region 读取所有表语句
         internal static string GetMSSQLTables(bool for2000)
         {
             return @"Select o.name as TableName, p.value as Description from sysobjects o " + (for2000 ? "left join sysproperties p on p.id = o.id and smallid = 0" : "left join sys.extended_properties p on p.major_id = o.id and minor_id = 0")
@@ -1122,6 +1181,10 @@ order by s1.colid";
         internal static string GetMySqlTables(string dbName)
         {
             return string.Format("select TABLE_NAME as TableName,TABLE_COMMENT as Description from `information_schema`.`TABLES`  where TABLE_SCHEMA='{0}'", dbName);
+        }
+        internal static string GetPostgreTables(string dbName)
+        {
+            return string.Format("select table_name as TableName,cast(obj_description(relfilenode,'pg_class') as varchar) as Description from information_schema.tables t left join  pg_class p on t.table_name=p.relname  where table_schema='public' and table_type='BASE TABLE' and table_catalog='{0}'", dbName);
         }
         #endregion
     }

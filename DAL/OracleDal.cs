@@ -20,7 +20,7 @@ namespace CYQ.Data
             : base(co)
         {
         }
-        public override void AddReturnPara()
+        protected override void AddReturnPara()
         {
             if (!Com.Parameters.Contains("ResultCount"))
             {
@@ -147,7 +147,7 @@ namespace CYQ.Data
         /// <summary>
         /// 抽象工厂
         /// </summary>
-        protected override DbProviderFactory GetFactory(string providerName)
+        protected override DbProviderFactory GetFactory()
         {
             if (IsUseOdpNet)
             {
@@ -171,7 +171,7 @@ namespace CYQ.Data
             }
             else
             {
-                return base.GetFactory(providerName);
+                return DbProviderFactories.GetFactory("System.Data.OracleClient");
             }
         }
         /// <summary>
@@ -198,7 +198,7 @@ namespace CYQ.Data
                             }
                             else
                             {
-                                string path = AppConst.RunFolderPath;
+                                string path = AppConst.AssemblyPath;
                                 if (System.IO.File.Exists(path + "Oracle." + ManagedName + "DataAccess.dll"))//Oracle 12
                                 {
                                     clientType = 2;

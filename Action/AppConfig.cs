@@ -17,25 +17,25 @@ namespace CYQ.Data
         private static MDictionary<string, string> appConfigs = new MDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private static MDictionary<string, string> connConfigs = new MDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         /// <summary>
-        /// 设置Web.config或App.config的值。
+        /// 设置Web.config或App.config的值 value为null时移除缓存。
         /// </summary>
-        public static void SetApp(string key, string value)
+        public static bool SetApp(string key, string value)
         {
-            try
+            if (string.IsNullOrEmpty(key)) { return false; }
+            if (value == null)
             {
-                if (appConfigs.ContainsKey(key))
-                {
-                    appConfigs[key] = value;
-                }
-                else
-                {
-                    appConfigs.Add(key, value);
-                }
+                return appConfigs.Remove(key);
             }
-            catch (Exception err)
+            if (appConfigs.ContainsKey(key))
             {
-                CYQ.Data.Log.WriteLogToTxt(err);
+                appConfigs[key] = value;
             }
+            else
+            {
+                appConfigs.Add(key, value);
+            }
+
+            return true;
         }
         /// <summary>
         /// 获取Web.config或App.config的值。
@@ -56,6 +56,10 @@ namespace CYQ.Data
             else
             {
                 string value = ConfigurationManager.AppSettings[key];
+                if (string.IsNullOrEmpty(value) && key.IndexOf('.') > 0)
+                {
+                    value = ConfigurationManager.AppSettings[key.Substring(key.IndexOf('.') + 1)];
+                }
                 value = string.IsNullOrEmpty(value) ? defaultValue : value;
                 try
                 {
@@ -95,9 +99,8 @@ namespace CYQ.Data
         /// <summary>
         /// 获取Web.config或App.config的connectionStrings节点的值。
         /// </summary>
-        public static string GetConn(string name, out string providerName)
+        public static string GetConn(string name)
         {
-            providerName = string.Empty;
             if (string.IsNullOrEmpty(name))
             {
                 name = "Conn";
@@ -113,23 +116,30 @@ namespace CYQ.Data
             ConnectionStringSettings conn = ConfigurationManager.ConnectionStrings[name];
             if (conn != null)
             {
-                providerName = conn.ProviderName;
-                if (name == conn.ConnectionString)//避免误写自己造成死循环。
+                string connString = conn.ConnectionString;
+                if (name == connString || string.IsNullOrEmpty(connString))//避免误写自己造成死循环。
                 {
                     return name;
                 }
-                name = conn.ConnectionString;
-                if (!string.IsNullOrEmpty(name) && name.Length < 32 && name.Split(' ').Length == 1)
+
+
+                if (connString.EndsWith(".txt") || connString.EndsWith(".ini") || connString.EndsWith(".json"))
                 {
-                    return GetConn(name);
+                    return ConnConfigWatch.Start(name, connString);
                 }
-                if (!connConfigs.ContainsKey(name) && string.IsNullOrEmpty(providerName)) // 如果有providerName，则不存档
+                //启动高可用配置加载方式
+
+                if (connString.Length < 32 && connString.Split(' ').Length == 1)
                 {
-                    connConfigs.Add(name, conn.ConnectionString);
+                    return GetConn(connString);
                 }
-                return conn.ConnectionString;
+                if (!connConfigs.ContainsKey(name))
+                {
+                    connConfigs.Add(name, connString);
+                }
+                return connString;
             }
-            if (name.Length > 32 && name.Split('=').Length > 3 && name.Contains(";")) //链接字符串很长，没空格的情况
+            if (name.Length > 32 && name.Split('=').Length > 3 && name.Contains(";")) //链接字符串很长，没空格的情况 txt path={0}
             {
                 return name;
             }
@@ -137,20 +147,17 @@ namespace CYQ.Data
         }
 
         /// <summary>
-        /// 获取Web.config或App.config的connectionStrings节点的值。
-        /// </summary>
-        public static string GetConn(string name)
-        {
-            string p;
-            return GetConn(name, out p);
-        }
-        /// <summary>
-        /// 添加自定义链接（内存有效，并未写入config文件）
+        /// 添加自定义链接（内存有效，并未写入config文件） value为null时移除缓存
         /// </summary>
         /// <param name="name">名称</param>
         /// <param name="connectionString">链接字符串</param>
-        public static void SetConn(string name, string connectionString)
+        public static bool SetConn(string name, string connectionString)
         {
+            if (string.IsNullOrEmpty(name)) { return false; }
+            if (connectionString == null)
+            {
+                return connConfigs.Remove(name);
+            }
             if (!connConfigs.ContainsKey(name))
             {
                 connConfigs.Add(name, connectionString);
@@ -159,6 +166,7 @@ namespace CYQ.Data
             {
                 connConfigs[name] = connectionString;
             }
+            return true;
         }
 
         #endregion
@@ -248,10 +256,10 @@ namespace CYQ.Data
             }
         }
         /// <summary>
-        /// 框架的运行路径
-        /// Win项目：是dll和exe所在的目录，
-        /// Asp.net项目：是指根目录
-        /// Asp.net core 项目：是指运行的路径（dll所在的路径）
+        /// 框架的运行路径(最外层的目录）
+        /// Win项目：是dll和exe所在的目录；
+        /// Asp.net项目：是指根目录；
+        /// Asp.net core 项目：是指运行的路径（dll所在的路径，同Win项目）。
         /// </summary>
         public static string RunPath
         {
@@ -261,13 +269,39 @@ namespace CYQ.Data
                 {
                     return AppDomain.CurrentDomain.BaseDirectory;
                 }
-                return AppConst.RunFolderPath;
+                return AppConst.AssemblyPath;
+            }
+        }
+        /// <summary>
+        /// 框架的程序集所在的运行路径
+        /// </summary>
+        public static string AssemblyPath
+        {
+            get
+            {
+                return AppConst.AssemblyPath;
+            }
+        }
+        /// <summary>
+        /// EncryptHelper加密的Key。
+        /// </summary>
+        public static string EncryptKey
+        {
+            get
+            {
+                return GetApp("EncryptKey", "");
+            }
+            set
+            {
+                SetApp("EncryptKey", value);
             }
         }
 
     }
     public static partial class AppConfig
     {
+        #region Web相关
+
         private static string _WebRootPath;
         //内部变量
         /// <summary>
@@ -283,7 +317,7 @@ namespace CYQ.Data
                 }
                 if (!_WebRootPath.EndsWith("\\") && !_WebRootPath.EndsWith("/"))
                 {
-                    _WebRootPath = _WebRootPath + "\\";
+                    _WebRootPath = _WebRootPath + "/";
                 }
                 return _WebRootPath;
             }
@@ -326,6 +360,7 @@ namespace CYQ.Data
                 _IsAspNetCore = value;
             }
         }
+        #endregion
     }
     public static partial class AppConfig
     {
@@ -342,7 +377,7 @@ namespace CYQ.Data
             {
                 get
                 {
-                    return GetApp("CDataLeft", "<![CDATA[MMS::");
+                    return GetApp("CDataLeft", "<![CDATA[");
                 }
                 set
                 {
@@ -356,7 +391,7 @@ namespace CYQ.Data
             {
                 get
                 {
-                    return GetApp("CDataRight", "::MMS]]>");
+                    return GetApp("CDataRight", "]]>");
                 }
                 set
                 {
@@ -374,7 +409,7 @@ namespace CYQ.Data
                     string dtdUri = GetApp("DtdUri", "/Setting/DTD/xhtml1-transitional.dtd");
                     if (dtdUri != null && dtdUri.IndexOf("http://") == -1)//相对路径
                     {
-                        dtdUri = AppConfig.WebRootPath + dtdUri.TrimStart('/').Replace("/", "\\");
+                        dtdUri = AppConfig.WebRootPath + dtdUri.TrimStart('/');//.Replace("/", "\\");
                     }
                     return dtdUri;
                 }
@@ -425,6 +460,7 @@ namespace CYQ.Data
                 }
                 set
                 {
+                    _Domain = string.Empty;
                     SetApp("Domain", value);
                 }
             }
@@ -885,6 +921,20 @@ namespace CYQ.Data
                 }
             }
             /// <summary>
+            /// AutoCache开启时，可以设置仅需要缓存的Table，多个用逗号分隔（此项配置时，NoCacheTables配置则被无忽略）
+            /// </summary>
+            public static string CacheTables
+            {
+                get
+                {
+                    return GetApp("CacheTables", "");
+                }
+                set
+                {
+                    SetApp("CacheTables", value);
+                }
+            }
+            /// <summary>
             /// AutoCache开启时，可以设置不缓存的Table，多个用逗号分隔
             /// </summary>
             public static string NoCacheTables
@@ -896,7 +946,6 @@ namespace CYQ.Data
                 set
                 {
                     SetApp("NoCacheTables", value);
-                    CYQ.Data.Cache.AutoCache.NoCacheTables = null;
                 }
             }
 
@@ -1028,7 +1077,7 @@ namespace CYQ.Data
             }
             private static string _LogPath;
             /// <summary>
-            /// 文本日志的配置相对路径（默认为：Logs\\"）
+            /// 文本日志的配置相对路径（默认为：Logs/"）
             /// </summary>
             public static string LogPath
             {
@@ -1036,21 +1085,15 @@ namespace CYQ.Data
                 {
                     if (string.IsNullOrEmpty(_LogPath))
                     {
-                        _LogPath = AppConfig.GetApp("LogPath", "Logs\\");
-                        if (!_LogPath.EndsWith("\\"))
-                        {
-                            _LogPath = _LogPath.TrimEnd('/') + "\\";
-                        }
+                        _LogPath = AppConfig.GetApp("LogPath", "Logs");
+                        _LogPath = _LogPath.TrimEnd('/', '\\') + "/";
                     }
                     return _LogPath;
                 }
                 set
                 {
                     _LogPath = value;
-                    if (!_LogPath.EndsWith("\\"))
-                    {
-                        _LogPath = _LogPath.TrimEnd('/') + "\\";
-                    }
+                    _LogPath = _LogPath.TrimEnd('/', '\\') + "/";
                 }
             }
 
@@ -1100,6 +1143,7 @@ namespace CYQ.Data
             #region 配置文件的其它属性
             /// <summary>
             ///毫秒数（这个是在对所有SQL语句的：将所有长时间(ms)的SQL语句写入日志，对应配置项LogPath的路径）
+            /// 此项设置后，即启用（无视OpenDebugInfo是否设置）
             /// </summary>
             public static int SqlFilter
             {
@@ -1115,6 +1159,7 @@ namespace CYQ.Data
 
             /// <summary>
             /// 毫秒数（这个是在AppDebug开启后的：可通过此项设置条件过滤出时间(ms)较长的SQL语句）
+            /// OpenDebugInfo为true，同时 AppDebug.Start() 后，此项才有效。
             /// </summary>
             public static int InfoFilter
             {

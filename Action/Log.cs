@@ -130,7 +130,7 @@ namespace CYQ.Data
                 }
                 else
                 {
-                    pageUrl = AppConst.RunFolderPath;
+                    pageUrl = AppConst.AssemblyPath;
                 }
 
                 using (SysLogs el = new SysLogs())
@@ -172,7 +172,7 @@ namespace CYQ.Data
         {
             try
             {
-                string folder = AppConfig.RunPath;
+                string folder = AppConfig.WebRootPath;
                 string logPath = AppConfig.Log.LogPath;
                 if (logPath.StartsWith("~/"))
                 {

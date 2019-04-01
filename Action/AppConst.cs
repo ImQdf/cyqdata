@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Reflection;
-
+using CYQ.Data.Tool;
 namespace CYQ.Data
 {
     /// <summary>
@@ -10,7 +10,15 @@ namespace CYQ.Data
     /// </summary>
     internal static class AppConst
     {
+        #region 相关网址常量
+        internal const string Github = "https://github.com/cyq1162/cyqdata";
+        internal const string Host = "cyqdata.com";
+        internal const string Host_Aries = "aries.cyqdata.com";
+        internal const string Host_Taurus = "taurus.cyqdata.com";
+
+        #endregion
         #region License 常量
+        
         //internal const string Lic_Error_Contact = "\r\nContact email:cyq1162@126.com;QQ:272657997\r\n site : http://www.cyqdata.com/cyqdata";
         ////internal const string Lic_Error_AtNight = "Sorry ! You need to get a license key when you run it at night!";
         //internal const string Lic_Error_NotBuyProvider = "Sorry ! Your license key not contains this provider function : ";
@@ -26,8 +34,10 @@ namespace CYQ.Data
         #endregion
 
         #region 全局
-        internal const string FilePre = "file:\\";
+        internal const string FilePre = "file:";
         internal const string Global_NotImplemented = "The method or operation is not implemented.";
+        internal const string ACKey = "4pMxvlk1OlOv0K6z96T+mNDBdEkX6mPa7Yq27cWP/u0#=2";
+        internal const string ALKey = "YH/xArdNhygAvQ7NwJiq2HreAmphvcTP7Yq27cWP/u0#=2";
         #endregion
 
         #region 静态常量
@@ -83,9 +93,9 @@ namespace CYQ.Data
         internal static string _DLLFullName = string.Empty;
         static string _RunfolderPath;
         /// <summary>
-        /// 框架的运行路径
+        /// 框架的程序集所在的运行路径
         /// </summary>
-        internal static string RunFolderPath
+        internal static string AssemblyPath
         {
             get
             {
@@ -94,7 +104,16 @@ namespace CYQ.Data
                     Assembly ass = System.Reflection.Assembly.GetExecutingAssembly();
                     _DLLFullName = ass.FullName;
                     _RunfolderPath = ass.CodeBase;
-                    _RunfolderPath = System.IO.Path.GetDirectoryName(_RunfolderPath).Replace(AppConst.FilePre, string.Empty) + "\\";
+                    _RunfolderPath = System.IO.Path.GetDirectoryName(_RunfolderPath);
+                    _RunfolderPath = _RunfolderPath.Replace(AppConst.FilePre, string.Empty).TrimStart('\\');
+                    if (_RunfolderPath.Contains("\\"))
+                    {
+                        _RunfolderPath += "\\";
+                    }
+                    else
+                    {
+                        _RunfolderPath += "/";
+                    }
                     ass = null;
                 }
                 return _RunfolderPath;

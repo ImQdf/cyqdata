@@ -15,11 +15,6 @@ namespace CYQ.Data
         {
 
         }
-
-        public override void AddReturnPara()
-        {
-
-        }
         internal static Assembly GetAssembly()
         {
             object ass = CacheManage.LocalInstance.Get("MySqlClient_Assembly");
@@ -33,7 +28,7 @@ namespace CYQ.Data
                 catch(Exception err)
                 {
                     string errMsg = err.Message;
-                    if (!File.Exists(AppConst.RunFolderPath + "MySql.Data.dll"))
+                    if (!File.Exists(AppConst.AssemblyPath + "MySql.Data.dll"))
                     {
                         errMsg = "Can't find the MySql.Data.dll more info : " + errMsg;
                     }
@@ -42,7 +37,7 @@ namespace CYQ.Data
             }
             return ass as Assembly;
         }
-        protected override DbProviderFactory GetFactory(string providerName)
+        protected override DbProviderFactory GetFactory()
         {
             object factory = _Cache.Get("MySqlClient_Factory");
             if (factory == null)

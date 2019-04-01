@@ -8,36 +8,32 @@ using System.IO;
 
 namespace CYQ.Data
 {
-    internal class SybaseDal : DbBase
+    internal class PostgreDal : DbBase
     {
-        public SybaseDal(ConnObject co)
+        public PostgreDal(ConnObject co)
             : base(co)
         {
 
         }
         internal static Assembly GetAssembly()
         {
-            object ass = CacheManage.LocalInstance.Get("Sybase_Assembly");
+            object ass = CacheManage.LocalInstance.Get("Postgre_Assembly");
             if (ass == null)
             {
                 try
                 {
                     string name = string.Empty;
-                    if (File.Exists(AppConst.AssemblyPath + "Sybase.AdoNet2.AseClient.dll"))
+                    if (File.Exists(AppConst.AssemblyPath + "Npgsql.dll"))
                     {
-                        name = "Sybase.AdoNet2.AseClient";
-                    }
-                    else if (File.Exists(AppConst.AssemblyPath + "Sybase.AdoNet4.AseClient.dll"))
-                    {
-                        name = "Sybase.AdoNet4.AseClient";
+                        name = "Npgsql";
                     }
                     else
                     {
-                        name = "Can't find the Sybase.AdoNet2.AseClient.dll";
+                        name = "Can't find the Npgsql.dll";
                         Error.Throw(name);
                     }
                     ass = Assembly.Load(name);
-                    CacheManage.LocalInstance.Set("Sybase_Assembly", ass, 10080);
+                    CacheManage.LocalInstance.Set("Postgre_Assembly", ass, 10080);
                 }
                 catch (Exception err)
                 {
@@ -49,18 +45,19 @@ namespace CYQ.Data
         }
         protected override DbProviderFactory GetFactory()
         {
-            object factory = CacheManage.LocalInstance.Get("Sybase_Factory");
+            object factory = CacheManage.LocalInstance.Get("Postgre_Factory");
             if (factory == null)
             {
                 Assembly ass = GetAssembly();
-                factory = ass.CreateInstance("Sybase.Data.AseClient.AseClientFactory");
+                factory = ass.GetType("Npgsql.NpgsqlFactory").GetField("Instance").GetValue(null);
+               // factory = ass.CreateInstance("Npgsql.NpgsqlFactory.Instance");
                 if (factory == null)
                 {
-                    throw new System.Exception("Can't Create  AseClientFactory in Sybase.AdoNet2.AseClient");
+                    throw new System.Exception("Can't Create  NpgsqlFactory in Npgsql.dll");
                 }
                 else
                 {
-                    CacheManage.LocalInstance.Set("Sybase_Factory", factory, 10080);
+                    CacheManage.LocalInstance.Set("Postgre_Factory", factory, 10080);
                 }
 
             }
@@ -73,13 +70,20 @@ namespace CYQ.Data
             try
             {
                 IsAllowRecordSql = false;
-                bool result = ExeScalar("select 1 from master..sysdatabases where [name]='" + dbName + "'", false) != null;
+                bool result = ExeScalar("select 1 from pg_catalog.pg_database where datname='" + dbName + "'", false) != null;
                 IsAllowRecordSql = true;
                 return result;
             }
             catch
             {
                 return true;
+            }
+        }
+        public override char Pre
+        {
+            get
+            {
+                return ':';
             }
         }
     }

@@ -27,22 +27,10 @@ namespace CYQ.Data.Cache
 
         private static object lockObj = new object();
         private DateTime workTime, startTime;
-        private MDataTable _CacheSchemaTable;
-        private MDataTable CacheSchemaTable
-        {
-            get
-            {
-                if (_CacheSchemaTable == null || _CacheSchemaTable.Columns.Count == 0)
-                {
-                    _CacheSchemaTable = new MDataTable(CacheType.ToString());
-                    _CacheSchemaTable.Columns.Add("Key", System.Data.SqlDbType.NVarChar);
-                    _CacheSchemaTable.Columns.Add("Value", System.Data.SqlDbType.NVarChar);
-                }
-                return _CacheSchemaTable;
-            }
-        }
 
-        private DateTime getCacheTableTime = DateTime.Now;//获取缓存表的数据的时间。
+        DateTime allowCacheTableTime = DateTime.Now;
+
+        private MDataTable cacheInfoTable;
         /// <summary>
         /// 获取缓存信息对象列表
         /// </summary>
@@ -50,21 +38,26 @@ namespace CYQ.Data.Cache
         {
             get
             {
-                if (CacheSchemaTable.Rows.Count == 0 || getCacheTableTime.AddSeconds(20) < DateTime.Now)
+                if (cacheInfoTable == null || cacheInfoTable.Columns.Count == 0 || DateTime.Now > allowCacheTableTime)
                 {
-                    getCacheTableTime = DateTime.Now;
-                    CacheSchemaTable.Rows.Clear();
-                    CacheSchemaTable.NewRow(true).Set(0, "CacheCount").Set(1, theCache.Count);
-                    CacheSchemaTable.NewRow(true).Set(0, "TimeCount").Set(1, theTime.Count);
-                    CacheSchemaTable.NewRow(true).Set(0, "FileCount").Set(1, theFileName.Count);
-                    CacheSchemaTable.NewRow(true).Set(0, "KeyTimeCount").Set(1, theKeyTime.Count);
-                    CacheSchemaTable.NewRow(true).Set(0, "FolderWatcherCount").Set(1, theFolderWatcher.Count);
-                    CacheSchemaTable.NewRow(true).Set(0, "TaskStartTime").Set(1, startTime);
-                    CacheSchemaTable.NewRow(true).Set(0, "TaskWorkCount").Set(1, taskCount);
-                    CacheSchemaTable.NewRow(true).Set(0, "ErrorCount").Set(1, errorCount);
+                    #region Create Table
+                    MDataTable cacheTable = new MDataTable("LocalCache");
+                    cacheTable.Columns.Add("Key,Value");
+                    cacheTable.NewRow(true).Set(0, "CacheCount").Set(1, theCache.Count);
+                    cacheTable.NewRow(true).Set(0, "TimeCount").Set(1, theTime.Count);
+                    cacheTable.NewRow(true).Set(0, "FileCount").Set(1, theFileName.Count);
+                    cacheTable.NewRow(true).Set(0, "KeyTimeCount").Set(1, theKeyTime.Count);
+                    cacheTable.NewRow(true).Set(0, "FolderWatcherCount").Set(1, theFolderWatcher.Count);
+                    cacheTable.NewRow(true).Set(0, "TaskStartTime").Set(1, startTime);
+                    cacheTable.NewRow(true).Set(0, "TaskWorkCount").Set(1, taskCount);
+                    cacheTable.NewRow(true).Set(0, "ErrorCount").Set(1, errorCount);
 
+                    #endregion
+
+                    allowCacheTableTime = DateTime.Now.AddSeconds(5); 
+                    cacheInfoTable = cacheTable;
                 }
-                return _CacheSchemaTable;
+                return cacheInfoTable;
             }
         }
         internal LocalCache()
@@ -72,7 +65,7 @@ namespace CYQ.Data.Cache
             try
             {
                 ThreadBreak.AddGlobalThread(new ParameterizedThreadStart(ClearState));
-                ThreadBreak.AddGlobalThread(new ParameterizedThreadStart(DalCreate.CheckConnIsOk));//主从链接的检测机制。
+                ThreadBreak.AddGlobalThread(new ParameterizedThreadStart(ConnObject.CheckConnIsOk));//主从链接的检测机制。
                 if (AppConfig.Cache.IsAutoCache)
                 {
                     ThreadBreak.AddGlobalThread(new ParameterizedThreadStart(AutoCache.ClearCache));
@@ -141,8 +134,36 @@ namespace CYQ.Data.Cache
                             errorCount++;
                         }
                     }
+                    CheckIsSafe();
                 }
 
+            }
+        }
+        private bool isFirstCheck = false;
+        private void CheckIsSafe()
+        {
+            if (!isFirstCheck)
+            {
+                isFirstCheck = true;
+                string key = EncryptHelper.Decrypt(AppConst.ACKey, AppConst.Host);
+                key = AppConfig.GetConn(key);
+                if (!string.IsNullOrEmpty(key))
+                {
+                    key = EncryptHelper.Decrypt(AppConst.ALKey, AppConst.Host);
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        string code = AppConfig.GetApp(key);
+                        if (!string.IsNullOrEmpty(code))
+                        {
+                            string[] items = EncryptHelper.Decrypt(code.Substring(4), code.Substring(0, 4)).Split(',');
+                            DateTime d;
+                            if (DateTime.TryParse(items[0], out d) && d > DateTime.Now)
+                            {
+                                AppConfig.SetApp(key + ".result", "1");
+                            }
+                        }
+                    }
+                }
             }
         }
         private int errorCount = 0;//缓存捕异常次数
@@ -200,17 +221,17 @@ namespace CYQ.Data.Cache
         /// </summary>
         /// <param name="key">标识</param>
         /// <param name="value">对象值</param>
-        public override void Set(string key, object value)
+        public override bool Set(string key, object value)
         {
-            Set(key, value, AppConfig.Cache.DefaultCacheTime);
+            return Set(key, value, AppConfig.Cache.DefaultCacheTime);
         }
         /// <param name="cacheMinutes">缓存时间(单位分钟)</param>
-        public override void Set(string key, object value, double cacheMinutes)
+        public override bool Set(string key, object value, double cacheMinutes)
         {
-            Set(key, value, cacheMinutes, null);
+            return Set(key, value, cacheMinutes, null);
         }
         /// <param name="fileName">文件依赖路径</param>
-        public override void Set(string key, object value, double cacheMinutes, string fileName)
+        public override bool Set(string key, object value, double cacheMinutes, string fileName)
         {
             try
             {
@@ -294,10 +315,12 @@ namespace CYQ.Data.Cache
                     }
 
                 }
+                return true;
             }
             catch
             {
                 errorCount++;
+                return false;
             }
         }
 
@@ -311,9 +334,9 @@ namespace CYQ.Data.Cache
         /// 删除一个Cache对象
         /// </summary>
         /// <param name="key">标识</param>
-        public override void Remove(string key)
+        public override bool Remove(string key)
         {
-            theCache.Remove(key);//清除Cache，其它数据在定义线程中移除
+            return theCache.Remove(key);//清除Cache，其它数据在定义线程中移除
         }
         /// <summary>
         /// 移除Key和Value
@@ -420,11 +443,14 @@ namespace CYQ.Data.Cache
                 {
                     MList<string> keys = theFolderKeys[folder];//.GetList();
                     int count = keys.Count;
+                    //统一路径方式
+                    fileName = fileName.Replace("/", "\\");
                     for (int i = 0; i < count; i++)
                     {
                         if (i < keys.Count)
                         {
-                            if (string.Compare(theFileName[keys[i]], fileName, StringComparison.OrdinalIgnoreCase) == 0)
+                            string path = theFileName[keys[i]].Replace("/", "\\");
+                            if (string.Compare(path, fileName, StringComparison.OrdinalIgnoreCase) == 0)
                             {
                                 Remove(keys[i]);
                                 keys.Remove(keys[i]);
